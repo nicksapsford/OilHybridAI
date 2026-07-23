@@ -38,9 +38,14 @@ MAX_RISK_PER_TRADE_GBP = 20.0    # max GBP loss per trade (2% of £1,000)
 # Recalibrated for the 1.5pt stop / 3pt target profile at £13.33/pt (System 5 Review,
 # 18 Jul 2026): Step1 ~0.6pt (developing), Step2 ~1.2pt (halfway), Step3 ~2.1pt (approaching).
 PROFIT_LADDER = [
+    # 5-step ladder (Gaius Commission 009, 23 Jul 2026 -- OilBenchmark/OilHybrid only;
+    # OilTrader stays 3-step as the control). Fills the near-target gap: final step at
+    # £36 = 90% of the £40 target (3pt x £13.33) vs 70% before. Step 1 unchanged.
     {"trigger_gbp": 8.00,  "floor_gbp": 6.00},
-    {"trigger_gbp": 16.00, "floor_gbp": 13.00},
+    {"trigger_gbp": 14.00, "floor_gbp": 12.00},
+    {"trigger_gbp": 20.00, "floor_gbp": 17.00},
     {"trigger_gbp": 28.00, "floor_gbp": 24.00},
+    {"trigger_gbp": 36.00, "floor_gbp": 32.00},
 ]
 SPREAD_POINTS          = 0.034   # Capital.com Brent spread ($/bbl), confirmed from demo API 16 Jul 2026 (was 0.3)
 DEFAULT_GBPUSD         = 1.27    # conservative fallback if live rate unavailable
@@ -233,6 +238,36 @@ class OilTrade:
                 log.info("  Trailing stop moved DOWN to %.2f (price=%.2f)", self.stop_loss, price)
                 return True
         return False
+
+    def update_excursions(self, price: float) -> None:
+        """MAE/MFE tracking (Gaius Commission 009 pilot). Peak FAVOURABLE (MFE) and worst
+        ADVERSE (MAE) excursion, in points from entry, updated each monitor tick. Analysis
+        only -- never affects stops, exits or the ladder."""
+        if not hasattr(self, "_mfe_pts"):
+            self._mfe_pts = 0.0
+            self._mae_pts = 0.0
+        fav = (price - self.entry_price) if self.direction == "LONG" \
+            else (self.entry_price - price)
+        if fav > self._mfe_pts:
+            self._mfe_pts = fav
+        if -fav > self._mae_pts:
+            self._mae_pts = -fav
+
+    @property
+    def mfe_pts(self) -> float:
+        return round(getattr(self, "_mfe_pts", 0.0), 2)
+
+    @property
+    def mae_pts(self) -> float:
+        return round(getattr(self, "_mae_pts", 0.0), 2)
+
+    @property
+    def mfe_gbp(self) -> float:
+        return round(getattr(self, "_mfe_pts", 0.0) * self.stake, 2)
+
+    @property
+    def mae_gbp(self) -> float:
+        return round(getattr(self, "_mae_pts", 0.0) * self.stake, 2)
 
     def check_exit(self, price: float) -> Optional[str]:
         """Check stop loss and take profit. Returns exit reason or None."""

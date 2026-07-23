@@ -31,6 +31,7 @@ CSV_HEADERS = [
     "entry_time", "exit_time", "liquidity_period",
     # News tagging (Morgan: compare NEWS-driven vs TECHNICAL trades)
     "news_sentiment", "news_score",
+    "mae_pts", "mae_gbp", "mfe_pts", "mfe_gbp",
 ]
 
 
@@ -57,10 +58,32 @@ class PaperTraderOil:
         else:
             log.info("Fresh start | capital=GBP %.2f", STARTING_CAPITAL_GBP)
 
+        self._migrate_csv(TRADES_LOG)
         self._restore_state()
         log.info("Stanley ready -- Oil paper trader")
 
     # ── CSV management ────────────────────────────────────────────────────────
+
+    def _migrate_csv(self, path) -> None:
+        """One-time: if oil_trades.csv predates the MAE/MFE columns, rewrite it with the
+        full header (old rows get blank MAE/MFE cells) so DictWriter stays aligned."""
+        try:
+            if not path.exists():
+                return
+            with open(path, newline="", encoding="utf-8") as f:
+                rows = list(csv.reader(f))
+            if not rows or all(h in rows[0] for h in CSV_HEADERS):
+                return
+            header = rows[0]
+            data = [dict(zip(header, r)) for r in rows[1:]]
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(f, fieldnames=CSV_HEADERS)
+                w.writeheader()
+                for d in data:
+                    w.writerow({k: d.get(k, "") for k in CSV_HEADERS})
+            log.info("Migrated trades log to MAE/MFE schema: %s", path)
+        except Exception as e:
+            log.warning("oil_trades.csv migration skipped: %s", e)
 
     def _init_csv(self) -> None:
         with open(TRADES_LOG, "w", newline="", encoding="utf-8") as f:
@@ -162,6 +185,10 @@ class PaperTraderOil:
             "liquidity_period":  trade.liquidity_period,
             "news_sentiment":    getattr(trade, "news_sentiment", "NEUTRAL") or "NEUTRAL",
             "news_score":        getattr(trade, "news_score", 0),
+            "mae_pts":           f"{trade.mae_pts:.2f}",
+            "mae_gbp":           f"{trade.mae_gbp:.2f}",
+            "mfe_pts":           f"{trade.mfe_pts:.2f}",
+            "mfe_gbp":           f"{trade.mfe_gbp:.2f}",
         }
         with open(TRADES_LOG, "a", newline="", encoding="utf-8") as f:
             csv.DictWriter(f, fieldnames=CSV_HEADERS).writerow(row)
@@ -291,6 +318,7 @@ class PaperTraderOil:
         if gbpusd is not None:
             self._gbpusd = gbpusd
         moved = self.current_trade.update_trailing_stop(price)
+        self.current_trade.update_excursions(price)   # MAE/MFE (Commission 009)
         rung = self.current_trade.apply_profit_ladder(price)   # Profit ladder (Variant 2)
         if rung:
             self._log_ladder_step(rung)

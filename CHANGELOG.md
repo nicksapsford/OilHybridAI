@@ -1,3 +1,17 @@
+## [1.1.0] - 2026-07-23  —  5-step ladder + MAE/MFE logging (Commission 009)
+### Changed — Profit Protection Ladder: 3 steps → 5 steps
+- Gaius Commission 009: fill the near-target gap. Ladder now
+  **£8→£6, £14→£12, £20→£17, £28→£24, £36→£32** (final step at £36 = 90% of the £40
+  target, vs 70% before). Applied to OilHybrid + OilBenchmark only; **OilTrader stays
+  3-step as the scientific control**.
+### Added — per-trade MAE/MFE logging (pilot, following the Crypto pilot)
+- `strategy_oil.py`: `OilTrade.update_excursions(price)` tracks peak favourable (MFE) +
+  worst adverse (MAE) excursion in points each tick; `mae_pts/mae_gbp/mfe_pts/mfe_gbp`
+  properties (gbp = pts × stake). Analysis only — never affects stops/exits/ladder.
+- `paper_trader_oil.py`: new MAE/MFE columns in `oil_trades.csv` + one-time
+  `_migrate_csv()` back-fill; wired into `monitor_trade`.
+- `dashboard_oil.py`: MAE + MFE columns on the P&L-page trade table.
+
 ## [1.0.0] - 2026-07-23  —  OilHybrid fork (Type 2 surgical hybrid)
 ### Added — OilHybrid, Hybrid Desk system (port 5045), cloned from OilTrader v1.3.1
 Implements Gaius Commission 008 (Oil System Review). A SURGICAL hybrid: Arthur STILL

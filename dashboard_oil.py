@@ -127,6 +127,17 @@ def get_state() -> dict:
 # Trade log readers (Page 2)
 # ---------------------------------------------------------------------------
 
+def _fmt_exc(row, col: str) -> str:
+    """Format a MAE/MFE cell (GBP) from a trade row; '--' if absent/blank (old rows)."""
+    try:
+        v = row.get(col)
+        if v is None or str(v).strip() in ("", "nan"):
+            return "--"
+        return f"{float(v):+.2f}"
+    except Exception:
+        return "--"
+
+
 def load_trades() -> list:
     """Load all Oil trades from CSV, most recent first."""
     if not TRADES_LOG.exists():
@@ -152,6 +163,8 @@ def load_trades() -> list:
                 "pnl_class":   "win" if pnl_gbp >= 0 else "loss",
                 "reason":      row["exit_reason"],
                 "liquidity":   row.get("liquidity_period", "--"),
+                "mae":         _fmt_exc(row, "mae_gbp"),
+                "mfe":         _fmt_exc(row, "mfe_gbp"),
             })
         return list(reversed(trades))
     except Exception:
@@ -1403,8 +1416,9 @@ function renderPage2(d){
     tradeHTML = '<table class="p2-table"><thead><tr>' +
       '<th>Dir</th><th>Entry Time</th><th>Entry $</th>' +
       '<th>Exit Time</th><th>Exit $</th><th>Points</th>' +
-      '<th>P&amp;L USD</th><th>P&amp;L GBP</th><th>GBPUSD</th><th>Liquidity</th><th>Reason</th>' +
-      '</tr></thead><tbody>';
+      '<th>P&amp;L USD</th><th>P&amp;L GBP</th><th>GBPUSD</th><th>Liquidity</th>' +
+      '<th title="Max Adverse Excursion (GBP)">MAE</th><th title="Max Favourable Excursion (GBP)">MFE</th>' +
+      '<th>Reason</th></tr></thead><tbody>';
     tradeHTML += trades.map(function(t){
       var rowCls = t.pnl_class==='win' ? ' class="tr-win"' : ' class="tr-loss"';
       return '<tr' + rowCls + '>' +
@@ -1418,6 +1432,8 @@ function renderPage2(d){
         '<td class="' + t.pnl_class + '">&pound;' + t.pnl_gbp + '</td>' +
         '<td>' + t.gbpusd + '</td>' +
         '<td style="color:var(--muted)">' + t.liquidity + '</td>' +
+        '<td style="color:var(--muted)">' + (t.mae || '--') + '</td>' +
+        '<td style="color:var(--muted)">' + (t.mfe || '--') + '</td>' +
         '<td style="color:var(--muted)">' + t.reason + '</td>' +
         '</tr>';
     }).join('');
