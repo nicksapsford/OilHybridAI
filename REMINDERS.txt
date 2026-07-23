@@ -1,0 +1,51 @@
+================================================================
+ OilHybrid AI -- KEY REMINDERS
+================================================================
+
+INSTRUMENT
+  Capital.com epic:   OIL_BRENT   (live-verified 2026-07-13: connector_status=capitalcom)
+  Priced in:          USD per barrel (~$80/bbl Brent)
+  Yahoo fallback:     BZ=F (Brent crude futures)
+
+RISK / SIZING (confirmed & approved -- v1.1.5, Nick sign-off 13 Jul 2026)
+  Stop distance:      5 points ($5/bbl -- ~1.4x median daily range $3.46)
+  Stake:              ~£4.00 per point
+  Position size:      ~5.34 oz  (recomputed each trade from live GBPUSD)
+  Max risk/trade:     £20  (2% of £1,000)
+  Take profit:        25 points ($25/bbl) safety ceiling (5:1 R:R)
+  Daily loss limit:   £60  (6% -- kill switch)
+  Spread:             0.30 points (negligible cost)
+
+TIMING (all UTC)
+  Market open:        23h/day Mon-Fri. Opens Sun 22:00, closes Fri 21:00.
+  Daily break:        21:00-22:00 UTC (one hour, no trading)
+  Force close:        20:45 UTC  --  NEVER HOLD OVERNIGHT
+  No new entries:     after 20:30 UTC; first 15 min of NY open (13:30-13:45)
+  Asian session:      21:00-08:00 -- thinner, requires higher conviction (RSI 60/40)
+
+CRITICAL BEFORE GOING LIVE
+  * Confirm the REAL margin factor for OIL on Capital.com.
+    The demo API reported 100% (almost certainly a demo artifact -- real oil
+    margin is ~5%). At ~0.90 oz notional (~£2,800) you need enough margin.
+    Your STOP-LOSS risk is still capped at £20 regardless of margin.
+  * Verify US CPI dates against the official BLS schedule -- calendar_oil.py
+    currently APPROXIMATES CPI as the 2nd Wednesday of each month (13:30 UTC).
+  * Paper trade a MINIMUM of 4 weeks before switching PAPER_TRADING_MODE off.
+
+GO-LIVE CHECKLIST (same as AlbionTrader)
+  [ ] 4+ weeks of paper trading reviewed (win rate, drawdown, per-period stats)
+  [ ] Real margin factor confirmed and position sizing re-checked
+  [ ] CPI / NFP / Fed dates verified for the period ahead
+  [ ] .env has LIVE Capital.com credentials + CAPITALCOM_ACC_TYPE=LIVE
+  [ ] PAPER_TRADING_MODE = False in main_oilhybrid.py
+  [ ] Pushover alerts tested end-to-end
+  [ ] Watchdog + dashboard confirmed restarting cleanly
+  [ ] Start small; monitor the first live sessions closely
+
+PORTS / TEAM
+  Dashboard port:     5045
+  Team (Arthurian):   Arthur (AI), Merlin (data), Lancelot (pre-checks),
+                      Excalibur (Capital.com), Guinevere (calendar),
+                      Morgan (performance), Galahad (watchdog),
+                      Percival (notifier), Stanley (paper trader)
+================================================================
