@@ -37,18 +37,20 @@ ENTER_LONG, ENTER_SHORT, HOLD an existing position, EXIT, or STAY_OUT.
 
 PHILOSOPHY -- BIDIRECTIONAL, GEOPOLITICS-AWARE
 OilHybrid is a bidirectional trend-following system trading Brent Crude (BZ) via
-Capital.com spread betting. The primary direction is set by the daily SSL each session:
-LONG in an uptrend (Brent above its 200MA, supply risk), SHORT only when a downtrend is
-confirmed AND Morgan SHORT confidence >= 65. Oil is geopolitically sensitive --
-Guinevere sentiment is critically important here. Spread-bet profits are TAX FREE in the
-UK. Intraday only -- force close 20:45 UTC, never hold overnight.
+Capital.com spread betting. The daily SSL alone sets the direction each session:
+LONG in an uptrend (Brent above its 200MA, supply risk), SHORT in a confirmed
+downtrend. SHORTs take the SAME confidence bar, pre-checks and sizing as LONGs
+(24 Jul 2026: no Morgan SHORT gate, no direction preference). Oil is geopolitically
+sensitive -- Guinevere sentiment is critically important here. Spread-bet profits are
+TAX FREE in the UK. Intraday only -- force close 20:45 UTC, never hold overnight.
 
 DIRECTION AWARENESS (current regime is given in the market data below)
-- Daily SSL BULL                    -> LONG session.
-- Daily SSL BEAR AND Morgan SHORT >= 65 -> SHORT session (elevated bar).
-- Daily SSL BEAR AND Morgan SHORT < 65  -> STAY OUT.
-OilHybrid has NO short trade history -- SHORT confidence starts low (~30) and builds only
-with SHORT phantom evidence. Do NOT force SHORTs; wait for the confidence to earn its way up.
+The daily SSL sets the direction symmetrically -- assess LONG and SHORT with EQUAL
+weight (24 Jul 2026: no Morgan SHORT gate, no direction preference).
+- Daily SSL BULL  -> look for LONG setups (uptrend).
+- Daily SSL BEAR  -> look for SHORT setups (downtrend).
+SHORTs take the SAME confidence bar, pre-checks and sizing as LONGs. The SSL alignment
+tells you the direction; you assess QUALITY, not direction preference.
 
 RISK PARAMETERS
 Stop = 1.5 points ($1.50/bbl). Target = 3 points ($3.00/bbl). Stake = £13.33/pt. R:R = 2:1.
@@ -80,16 +82,16 @@ PROFIT LADDER (active -- reference its status in HOLD reasoning)
 With the tight 1.5pt stop, each ladder step is a significant fraction of the total target --
 respect them. Once a rung locks, the position cannot close below that floor.
 
-SHORT GATING (hard rule)
-SHORT trades require Morgan SHORT confidence >= 65 (the current value is given below).
-OilHybrid has ZERO short trade history -- Morgan SHORT starts near 30 and builds only with
-SHORT phantom evidence. Do NOT return ENTER_SHORT until Morgan SHORT >= 65; the system
-blocks it anyway. In a BEAR daily with Morgan SHORT < 65, STAY_OUT.
+DIRECTION SYMMETRY (hard rule)
+There is NO SHORT gate. SHORT and LONG are assessed on identical terms -- same
+confidence bar, same pre-checks, same sizing. Do not add caution to a SHORT that you
+would not add to the mirror-image LONG. Morgan confidence is context for BOTH
+directions equally, not a SHORT-specific brake.
 
 CORE IDENTITY / TIMEFRAMES
 Three timeframes: daily (trend/direction), 1-hour (confirmation), 5-minute (entry).
-Both LONG and SHORT are viable (SHORT gated as above). P&L is USD, converted to GBP at the
-live GBPUSD rate (given below).
+Both LONG and SHORT are viable and assessed on identical terms. P&L is USD, converted to
+GBP at the live GBPUSD rate (given below).
 
 OIL MARKET CHARACTER
 Oil moves on OPEC+ supply decisions, US shale output, global demand, weekly EIA inventories,
@@ -116,9 +118,9 @@ the SAME way at any Morgan score of 30 or above -- do NOT raise the bar or deman
 entries automatically and Gaius intervenes, so you will not be asked to enter there.
 
 HARD RULES -- NEVER VIOLATE
-1.  Check the daily SSL + regime first -- it sets the allowed direction today.
+1.  Check the daily SSL + regime first -- it sets the direction today (BULL->LONG, BEAR->SHORT).
 2.  1h AND 5m SSL must agree with the intended direction before any entry.
-3.  SHORTs require Morgan SHORT >= 65. BEAR daily + Morgan SHORT < 65 -> STAY_OUT.
+3.  Assess LONG and SHORT on identical terms -- no SHORT gate, no direction preference.
 4.  Never enter within 30 min of NFP/Fed/CPI, nor the first 15 min of NY open; hold through EIA.
 5.  Never hold overnight -- force close by 20:45 UTC; no new entries after 20:30 UTC.
 6.  Tight 1.5pt stop -- every entry needs strong confirmation; do NOT exit on ordinary noise.
@@ -149,12 +151,11 @@ REQUIRED OUTPUT -- valid JSON only. No markdown, no preamble.
 
 # ── Format indicators for Arthur ──────────────────────────────────────────────
 
-def _regime_block(bar_1d, proposed_direction, morgan_short, liquidity_period) -> str:
-    """Live regime / SHORT-gate / Guinevere block for Arthur (System 5 Review)."""
+def _regime_block(bar_1d, proposed_direction, morgan_confidence, liquidity_period) -> str:
+    """Live regime / Guinevere block for Arthur (bidirectional, no SHORT gate 24 Jul)."""
     ssl_1d = "BULL" if (bar_1d is not None and bar_1d.get("ssl_bull")) else \
              ("BEAR" if bar_1d is not None else "N/A")
-    ms = 30.0 if morgan_short is None else float(morgan_short)
-    gate = "OPEN" if ms >= 65 else "CLOSED"
+    mc = 50.0 if morgan_confidence is None else float(morgan_confidence)
     direction = proposed_direction or "BOTH"
     guin = "unavailable"
     macro_line = "Global macro sentiment: NEUTRAL (set n/a UTC). no adjustment for this system."
@@ -166,10 +167,11 @@ def _regime_block(bar_1d, proposed_direction, morgan_short, liquidity_period) ->
     except Exception:
         pass
     return (
-        "REGIME AND GATE (current)\n"
+        "REGIME (current)\n"
         f"  Daily SSL:         {ssl_1d}\n"
         f"  Regime direction:  {direction}   (what to look for this session)\n"
-        f"  Morgan SHORT conf: {ms:.1f}/100  ->  SHORT gate {gate} (SHORTs need >= 65)\n"
+        f"  Morgan confidence: {mc:.1f}/100   (context for BOTH directions equally)\n"
+        f"  Direction rule:    symmetric -- LONG and SHORT on identical terms, no SHORT gate\n"
         f"  Guinevere (oil):   {guin}   (geopolitics drives Brent -- factor into conviction)\n"
         f"  Macro overlay:     {macro_line}\n"
         f"  Session:           {liquidity_period}"
@@ -179,9 +181,9 @@ def _regime_block(bar_1d, proposed_direction, morgan_short, liquidity_period) ->
 def _format_indicators(bar_1d, bar_1h, bar_5m, current_price, liquidity_period,
                        gbpusd_rate, current_trade=None,
                        calendar_context=None, perf_context=None,
-                       morgan_short=None, proposed_direction=None) -> str:
+                       morgan_confidence=None, proposed_direction=None) -> str:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    regime_block = _regime_block(bar_1d, proposed_direction, morgan_short, liquidity_period)
+    regime_block = _regime_block(bar_1d, proposed_direction, morgan_confidence, liquidity_period)
 
     def _f(v, dp=2):
         if v is None or pd.isna(v):
@@ -263,7 +265,7 @@ def get_trading_decision(bar_1h, bar_5m, current_price, liquidity_period,
                          bar_1d=None, current_trade=None,
                          calendar_context=None, perf_context=None,
                          gbpusd_rate: float = 1.27,
-                         morgan_short=None, proposed_direction=None) -> dict:
+                         morgan_confidence=None, proposed_direction=None) -> dict:
     """
     Send indicator data to Arthur (Claude) and receive a trading decision.
     Only call this AFTER Lancelot pre-checks have passed.
@@ -273,7 +275,7 @@ def get_trading_decision(bar_1h, bar_5m, current_price, liquidity_period,
     user_message = _format_indicators(
         bar_1d, bar_1h, bar_5m, current_price, liquidity_period,
         gbpusd_rate, current_trade, calendar_context, perf_context,
-        morgan_short, proposed_direction,
+        morgan_confidence, proposed_direction,
     )
 
     for attempt in range(2):

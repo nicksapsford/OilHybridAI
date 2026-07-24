@@ -17,15 +17,13 @@ from pathlib import Path
 import pandas as pd
 from dotenv import load_dotenv
 
-# Morgan SHORT confidence a SHORT must clear before it can execute (System 5 Review,
-# 18 Jul 2026). OilHybrid has no SHORT history, so SHORT confidence starts at 30 and
-# must earn its way to 65. Mirrors FTSE/Crypto's SHORT gate.
-MORGAN_SHORT_MIN = 65
-
 # ── Config ────────────────────────────────────────────────────────────────────
 
 PAPER_TRADING_MODE = True
-VERSION            = "1.0.0"
+VERSION            = "1.1.0"
+# BIDIRECTIONAL (Nick's direct order, 24 Jul 2026): the Morgan SHORT gate has been
+# removed. SHORTs take the SAME confidence bar and pre-checks as LONGs -- the daily
+# SSL alone sets direction (BULL -> LONG, BEAR -> SHORT). No direction asymmetry.
 CANDLE_INTERVAL    = 300      # 5-minute candle loop (seconds)
 POSITION_INTERVAL  = 30       # position monitoring (seconds)
 HEARTBEAT_INTERVAL = 240      # liveness log at least this often, even when idle
@@ -396,28 +394,20 @@ def run_candle_tick(feed, stanley, account, ig) -> None:
     sig_5m = feed.composite_signal("5m")
     trend_1d = "LONG" if (bar_1d is not None and bar_1d.get("ssl_bull")) else "SHORT"
 
-    # ── Bidirectional regime direction (System 5 Review, Change 1) ──────────────
-    # Daily SSL sets the bias; the SHORT side is gated by a separate Morgan SHORT
-    # confidence (starts 30, needs >= 65). BULL -> LONG. BEAR -> SHORT (gated below).
-    # BEAR + Morgan SHORT < 65 -> STAY OUT (no short history; do not force SHORTs).
-    _morgan_short = performance_oil.get_short_confidence()
+    # ── Bidirectional regime direction (fully symmetric, 24 Jul 2026) ───────────
+    # Daily SSL sets direction both ways: BULL -> LONG, BEAR -> SHORT. No Morgan gate
+    # (Nick's direct order) -- SHORTs take the SAME confidence bar and pre-checks as
+    # LONGs. Neutral/NaN daily -> the 1h signal decides. Morgan is still COMPUTED and
+    # passed to Arthur as context, it just no longer gates or biases direction.
+    _morgan = get_perf_dashboard_dict().get("confidence_score")
+    _morgan = 50.0 if _morgan is None else float(_morgan)
     _ssl_1d = bar_1d.get("ssl_bull") if bar_1d is not None else None
     if _ssl_1d is None or (isinstance(_ssl_1d, float) and pd.isna(_ssl_1d)):
         proposed_direction = sig_1h if sig_1h in ("LONG", "SHORT") else "BOTH"   # neutral daily
-    elif bool(_ssl_1d):
+    elif bool(_ssl_1d):                                   # BULL daily -> LONG
         proposed_direction = "LONG"
-    else:
+    else:                                                 # BEAR daily -> SHORT
         proposed_direction = "SHORT"
-
-    # Morgan SHORT gate: a SHORT needs Morgan SHORT confidence >= 65. Block before
-    # Lancelot; no phantom (Section 6: phantom rows are genuine Arthur decisions only).
-    if proposed_direction == "SHORT" and _morgan_short < MORGAN_SHORT_MIN:
-        log.info("SHORT blocked -- Morgan SHORT confidence below %d (current: %.1f). "
-                 "No SHORT history on OilHybrid.", MORGAN_SHORT_MIN, _morgan_short)
-        _push_dashboard(stanley, account, ig, price, gbpusd, period,
-                        calendar_summary=cal_summary, connector_status=connector_status,
-                        trend_1d=trend_1d, trend_1h=sig_1h, signal_5m=sig_5m)
-        return
 
     ind_1d = _indicator_snapshot(bar_1d)
     ind_1h = _indicator_snapshot(bar_1h)
@@ -474,7 +464,7 @@ def run_candle_tick(feed, stanley, account, ig) -> None:
         bar_1h=bar_1h, bar_5m=bar_5m, current_price=price, liquidity_period=period,
         bar_1d=bar_1d, current_trade=stanley.current_trade,
         calendar_context=cal_context, perf_context=perf_context, gbpusd_rate=gbpusd,
-        morgan_short=_morgan_short, proposed_direction=proposed_direction,
+        morgan_confidence=_morgan, proposed_direction=proposed_direction,
     )
 
     # Guinevere news -> Arthur confidence adjustment (soft, additive; never blocks).
