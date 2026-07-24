@@ -942,21 +942,30 @@ function renderPerfCard(perf){
   var stStr  = stCnt > 0 ? (stCnt + ' ' + (stType==='WIN'?'WIN':'LOSS') + (stCnt>1?'S':'')) : '--';
   var r5     = perf.recent_5 || [];
   var dots   = r5.map(function(r){ return '<span class="perf-dot ' + (r==='WIN'?'perf-win':'perf-loss') + '"></span>'; }).join('');
-  var cons   = perf.conservative
-    ? '<div style="margin-top:4px;padding:3px 6px;background:rgba(231,76,60,0.1);border:1px solid var(--red);border-radius:3px;font-size:10px;color:var(--red);font-weight:700;">CONSERVATIVE MODE -- STAY OUT</div>'
-    : '';
+  // Three-zone Morgan panel (24 Jul 2026): CRITICAL (<30, hard block) / WARNING (30-49,
+  // trading continues) / normal (>=50). Reset button available in both non-normal zones.
+  var cons = '';
   var mScore = (perf.morgan_raw != null ? perf.morgan_raw : score);
   var lastReset = perf.morgan_last_reset
     ? '<div style="margin-top:3px;font-weight:400;color:var(--muted);font-size:9px;">Morgan last reset: ' + perf.morgan_last_reset + '</div>'
     : '';
-  var warn   = perf.morgan_below_floor
-    ? '<div style="margin-top:4px;padding:5px 7px;background:rgba(231,76,60,0.12);border:1px solid var(--red);border-radius:3px;font-size:10px;color:var(--red);font-weight:700;">' +
-        '&#9888; MORGAN BELOW FLOOR — Score: ' + mScore + '/100<br>' +
-        '<span style="font-weight:400;color:var(--muted)">Review phantom data and trade history. Manual reset available.</span><br>' +
-        '<button onclick="resetMorgan()" style="margin-top:5px;padding:3px 9px;background:var(--red);color:#fff;border:none;border-radius:3px;font-size:10px;font-weight:700;cursor:pointer;">RESET MORGAN TO 50</button>' +
-        lastReset +
-      '</div>'
-    : lastReset;
+  var resetBtn = '<button onclick="resetMorgan()" style="margin-top:5px;padding:3px 9px;background:var(--red);color:#fff;border:none;border-radius:3px;font-size:10px;font-weight:700;cursor:pointer;">RESET MORGAN TO 50</button>';
+  var floor;
+  if(perf.morgan_hard_block){
+    floor = '<div style="margin-top:4px;padding:5px 7px;background:rgba(231,76,60,0.18);border:1px solid var(--red);border-radius:3px;font-size:10px;color:var(--red);font-weight:700;">' +
+        '&#128680; MORGAN CRITICAL — Score: ' + mScore + '/100<br>' +
+        '<span style="font-weight:400;color:var(--muted)">Entry suspended. Gaius intervention active. Existing positions still managed.</span><br>' +
+        resetBtn + lastReset +
+      '</div>';
+  } else if(perf.morgan_below_floor){
+    floor = '<div style="margin-top:4px;padding:5px 7px;background:rgba(243,156,18,0.14);border:1px solid var(--amber,#f39c12);border-radius:3px;font-size:10px;color:var(--amber,#f39c12);font-weight:700;">' +
+        '&#9888; MORGAN WARNING — Score: ' + mScore + '/100<br>' +
+        '<span style="font-weight:400;color:var(--muted)">Performance under review. Trading continues. Manual reset available.</span><br>' +
+        resetBtn + lastReset +
+      '</div>';
+  } else {
+    floor = lastReset;
+  }
   return '<div class="card"><div class="card-title oil">Arthur Self-Performance</div>' +
     '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">' +
     '<span style="font-size:10px;color:var(--muted);min-width:60px">Confidence</span>' +
@@ -969,7 +978,7 @@ function renderPerfCard(perf){
     '<span>Streak: <strong style="color:' + stCol + '">' + stStr + '</strong></span>' +
     '<span>Trades: <strong style="color:var(--oil)">' + total + '</strong></span>' +
     '<span>WR: <strong style="color:var(--text)">' + fmt(perf.win_rate,1) + '%</strong></span>' +
-    '</div>' + cons + warn + '</div>';
+    '</div>' + cons + floor + '</div>';
 }
 
 /* -- STAY OUT QUALITY panel ------------------------------------------------ */
@@ -1372,8 +1381,10 @@ function renderPage2(d){
       perfHTML += '</div>';
     }
 
-    if(perf.conservative){
-      perfHTML += '<div class="cons-warn">CONSERVATIVE MODE ACTIVE -- System staying out pending improved performance</div>';
+    if(perf.morgan_hard_block){
+      perfHTML += '<div class="cons-warn">&#128680; MORGAN HARD BLOCK (&lt;30) -- new entries suspended; Gaius intervention active</div>';
+    } else if(perf.morgan_below_floor){
+      perfHTML += '<div class="cons-warn" style="color:var(--amber,#f39c12);border-color:var(--amber,#f39c12)">&#9888; MORGAN WARNING (30-49) -- trading continues; manual reset available</div>';
     }
   }
 

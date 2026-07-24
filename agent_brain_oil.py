@@ -109,9 +109,11 @@ TIER 2: MACD histogram, TMO. TIER 3: Chande MO, Money Flow.
 5-MINUTE ENTRY: last candle GREEN for LONG / RED for SHORT; 5m TMO > +0.3 LONG / < -0.3 SHORT.
 Lancelot now also requires the 5m SSL to agree with the direction.
 
-SELF PERFORMANCE AWARENESS (Morgan)
-HIGH (75-100): normal. MEDIUM (50-74): slightly higher bar on borderline. LOW (25-49):
-exceptional setups only. VERY LOW (0-24): CONSERVATIVE MODE -- STAY_OUT.
+SELF PERFORMANCE AWARENESS (Morgan) -- CONTEXT ONLY
+Morgan confidence is context; it does NOT change your entry threshold. Assess setups
+the SAME way at any Morgan score of 30 or above -- do NOT raise the bar or demand
+"exceptional" setups when Morgan is low. Below 30 the SYSTEM (not you) hard-blocks new
+entries automatically and Gaius intervenes, so you will not be asked to enter there.
 
 HARD RULES -- NEVER VIOLATE
 1.  Check the daily SSL + regime first -- it sets the allowed direction today.
@@ -122,7 +124,8 @@ HARD RULES -- NEVER VIOLATE
 6.  Tight 1.5pt stop -- every entry needs strong confirmation; do NOT exit on ordinary noise.
 7.  Factor Guinevere sentiment into conviction (geopolitics drives oil).
 8.  When in doubt -- STAY OUT. A STAY_OUT is often the BEST decision.
-9.  Conservative mode (Morgan confidence <25): hard STAY_OUT.
+9.  Morgan is context only -- do NOT raise your entry bar at low Morgan (>=30). The
+    system hard-blocks new entries below 30 on its own.
 
 REQUIRED OUTPUT -- valid JSON only. No markdown, no preamble.
 {
