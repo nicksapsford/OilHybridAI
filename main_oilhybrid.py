@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 # ── Config ────────────────────────────────────────────────────────────────────
 
 PAPER_TRADING_MODE = True
-VERSION            = "1.3.0"
+VERSION            = "1.3.1"
 # BIDIRECTIONAL (Nick's direct order, 24 Jul 2026): the Morgan SHORT gate has been
 # removed. SHORTs take the SAME confidence bar and pre-checks as LONGs -- the daily
 # SSL alone sets direction (BULL -> LONG, BEAR -> SHORT). No direction asymmetry.
