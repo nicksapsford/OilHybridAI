@@ -32,7 +32,20 @@ CSV_HEADERS = [
     # News tagging (Morgan: compare NEWS-driven vs TECHNICAL trades)
     "news_sentiment", "news_score",
     "mae_pts", "mae_gbp", "mfe_pts", "mfe_gbp",
+    # ── ARTHUR_EXIT analytics (Gaius Commission 012 build, 25 Jul 2026) ──
+    # Populated ONLY on ARTHUR_EXIT rows. Indicator snapshot + Arthur's exit-decision
+    # confidence are captured at exit time; the post-exit prices are filled in
+    # retrospectively (fill_post_exit_prices) so we can measure whether an early exit
+    # was genuine skill (trade kept falling) or premature (trade recovered).
+    "exit_daily_ssl", "exit_1h_ssl", "exit_5m_ssl",
+    "exit_tmo", "exit_money_flow", "exit_rsi", "exit_chande_mo", "exit_confidence",
+    "price_30m_after", "price_60m_after", "recovered_30m", "recovered_60m",
 ]
+
+# The 12 analytics columns above, in order -- used by _migrate_csv and blank-fill.
+# (The existing _migrate_csv already blank-fills any header missing from an old CSV,
+#  so it transparently handles these new columns too -- no separate migration needed.)
+_ANALYTICS_COLS = CSV_HEADERS[21:]
 
 
 class PaperTraderOil:
@@ -162,12 +175,13 @@ class PaperTraderOil:
             log.warning("Could not restore state (%s) -- starting fresh", exc)
             self._clear_state()
 
-    def _log_trade(self, trade: OilTrade) -> None:
+    def _log_trade(self, trade: OilTrade, exit_meta: dict = None) -> None:
         if trade.exit_price is None:
             return
         exit_t  = trade.exit_time or datetime.now(timezone.utc)
         entry_t = trade.entry_time or exit_t
-        row = {
+        row = {k: "" for k in CSV_HEADERS}   # analytics cols default blank
+        row.update({
             "date":              exit_t.strftime("%Y-%m-%d"),
             "time":              exit_t.strftime("%H:%M:%S"),
             "direction":         trade.direction,
@@ -189,10 +203,58 @@ class PaperTraderOil:
             "mae_gbp":           f"{trade.mae_gbp:.2f}",
             "mfe_pts":           f"{trade.mfe_pts:.2f}",
             "mfe_gbp":           f"{trade.mfe_gbp:.2f}",
-        }
+        })
+        # ARTHUR_EXIT analytics: indicator snapshot + Arthur's exit confidence (Comm 012).
+        if exit_meta:
+            for k in _ANALYTICS_COLS:
+                if k in exit_meta and exit_meta[k] is not None:
+                    row[k] = exit_meta[k]
         with open(TRADES_LOG, "a", newline="", encoding="utf-8") as f:
             csv.DictWriter(f, fieldnames=CSV_HEADERS).writerow(row)
         log.info("Trade logged: %s", TRADES_LOG)
+
+    def fill_post_exit_prices(self, current_price: float, now_utc: datetime = None) -> None:
+        """Retrospectively fill price_30m_after / price_60m_after (+ recovered flags) on
+        ARTHUR_EXIT rows once 30 / 60 min have elapsed since the exit (Gaius Commission
+        012). Robust across restarts -- rescans the CSV each call, samples the current
+        price at the first tick past T+30 / T+60, and rewrites only if something changed.
+        'recovered' = would the trade be at/through its ENTRY level (breakeven) at that
+        sample (LONG: price >= entry; SHORT: price <= entry). Best-effort; never raises."""
+        try:
+            if current_price is None:
+                return
+            now_utc = now_utc or datetime.now(timezone.utc)
+            with open(TRADES_LOG, newline="", encoding="utf-8") as f:
+                rows = list(csv.DictReader(f))
+            if not rows:
+                return
+            changed = False
+            for r in rows:
+                if r.get("exit_reason") != "ARTHUR_EXIT":
+                    continue
+                if r.get("price_30m_after") and r.get("price_60m_after"):
+                    continue  # already fully filled
+                try:
+                    xt = datetime.strptime(r["exit_time"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                    entry = float(r["entry_price_usd"]); direction = r["direction"]
+                except (KeyError, ValueError):
+                    continue
+                elapsed = (now_utc - xt).total_seconds() / 60.0
+                for mins, pcol, rcol in ((30, "price_30m_after", "recovered_30m"),
+                                         (60, "price_60m_after", "recovered_60m")):
+                    if elapsed >= mins and not r.get(pcol):
+                        r[pcol] = f"{current_price:.2f}"
+                        recovered = (current_price >= entry) if direction == "LONG" else (current_price <= entry)
+                        r[rcol] = "YES" if recovered else "NO"
+                        changed = True
+            if changed:
+                with open(TRADES_LOG, "w", newline="", encoding="utf-8") as f:
+                    w = csv.DictWriter(f, fieldnames=CSV_HEADERS)
+                    w.writeheader()
+                    for r in rows:
+                        w.writerow({k: r.get(k, "") for k in CSV_HEADERS})
+        except Exception as exc:
+            log.debug("fill_post_exit_prices skipped (%s)", exc)
 
     def _save_summary(self) -> None:
         total    = len(self.trade_history)
@@ -291,8 +353,11 @@ class PaperTraderOil:
         )
         return self.current_trade
 
-    def close_trade(self, price: float, reason: str, gbpusd: float = None) -> Optional[OilTrade]:
-        """Close the current paper trade, update capital, save CSV."""
+    def close_trade(self, price: float, reason: str, gbpusd: float = None,
+                    exit_meta: dict = None) -> Optional[OilTrade]:
+        """Close the current paper trade, update capital, save CSV. exit_meta (optional)
+        carries the indicator snapshot + Arthur's exit confidence for an ARTHUR_EXIT
+        (Gaius Commission 012); it is written to the analytics columns of the row."""
         if self.current_trade is None:
             return None
         rate = gbpusd if gbpusd is not None else self._gbpusd
@@ -310,7 +375,7 @@ class PaperTraderOil:
         trade = close_trade(self.current_trade, price, reason, rate)
         self.capital_gbp = round(self.capital_gbp + trade.pnl_gbp, 2)
         self.trade_history.append(trade)
-        self._log_trade(trade)
+        self._log_trade(trade, exit_meta=exit_meta)
         self._save_summary()
         self._clear_state()
         result = "PROFIT" if trade.pnl_gbp >= 0 else "LOSS"
